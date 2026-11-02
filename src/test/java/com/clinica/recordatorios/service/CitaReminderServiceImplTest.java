@@ -1,16 +1,5 @@
 package com.clinica.recordatorios.service;
 
-import com.clinica.recordatorios.channel.ReminderChannel;
-import com.clinica.recordatorios.channel.ReminderChannelFactory;
-import com.clinica.recordatorios.domain.CanalNotificacion;
-import com.clinica.recordatorios.domain.Cita;
-import com.clinica.recordatorios.repository.CitaRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -21,9 +10,25 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.clinica.recordatorios.channel.ReminderChannel;
+import com.clinica.recordatorios.channel.ReminderChannelFactory;
+import com.clinica.recordatorios.domain.CanalNotificacion;
+import com.clinica.recordatorios.domain.Cita;
+import com.clinica.recordatorios.repository.CitaRepository;
+
 @ExtendWith(MockitoExtension.class)
 class CitaReminderServiceImplTest {
 
+    @Mock
+    private ReminderChannel canalUrgenteMock;
+    
     @Mock
     private CitaRepository citaRepository;
 
@@ -42,8 +47,8 @@ class CitaReminderServiceImplTest {
 
     @BeforeEach
     void setup() {
-        citaReminderService =
-                new CitaReminderServiceImpl(citaRepository, reminderChannelFactory, clockFijo);
+        citaReminderService = new CitaReminderServiceImpl(
+                citaRepository, reminderChannelFactory, canalUrgenteMock, clockFijo);
     }
 
     @Test
@@ -77,7 +82,6 @@ class CitaReminderServiceImplTest {
         verify(citaRepository).findByFechaHoraCitaBetweenAndRecordatorioEnviadoFalse(
                 desdeCaptor.capture(), hastaCaptor.capture());
 
-        // Con el Fake, el resultado es exacto y reproducible en cualquier máquina.
         assertEquals(LocalDateTime.of(2026, 8, 10, 9, 0), desdeCaptor.getValue());
         assertEquals(LocalDateTime.of(2026, 8, 11, 9, 0), hastaCaptor.getValue());
     }
@@ -92,5 +96,43 @@ class CitaReminderServiceImplTest {
         assertEquals(0, enviados);
         verifyNoInteractions(reminderChannelFactory);
         verify(citaRepository, never()).save(any());
+    }
+
+    @Test
+    void enviarRecordatorioUrgente_citaExistente_usaCanalUrgenteInyectado() {
+        Cita cita = new Cita(5L, "Luis Peña", "3001234567",
+                LocalDateTime.of(2026, 8, 10, 10, 30), CanalNotificacion.SMS, false);
+        when(citaRepository.findById(5L)).thenReturn(java.util.Optional.of(cita));
+
+        citaReminderService.enviarRecordatorioUrgente(5L);
+
+        verify(canalUrgenteMock, times(1)).enviar(eq(cita), contains("URGENTE"));
+        verify(citaRepository).save(cita);
+        assertTrue(cita.isRecordatorioEnviado());
+    }
+
+    @Test
+    void enviarRecordatorioUrgente_gatewayFalla_noMarcaComoEnviado() {
+        Cita cita = new Cita(6L, "Marta Ruiz", "3009876543",
+                LocalDateTime.of(2026, 8, 10, 10, 30), CanalNotificacion.SMS, false);
+        when(citaRepository.findById(6L)).thenReturn(java.util.Optional.of(cita));
+        
+        doThrow(new RuntimeException("Gateway de SMS no disponible"))
+                .when(canalUrgenteMock).enviar(any(), anyString());
+
+        assertThrows(RuntimeException.class,
+                () -> citaReminderService.enviarRecordatorioUrgente(6L));
+
+        verify(citaRepository, never()).save(any());
+    }
+
+    @Test
+    void enviarRecordatorioUrgente_citaInexistente_lanzaCitaNoEncontradaException() {
+        when(citaRepository.findById(99L)).thenReturn(java.util.Optional.empty());
+
+        assertThrows(CitaNoEncontradaException.class,
+                () -> citaReminderService.enviarRecordatorioUrgente(99L));
+
+        verifyNoInteractions(canalUrgenteMock);
     }
 }
