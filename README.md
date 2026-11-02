@@ -1,0 +1,5 @@
+# Recordatorios Citas Service
+
+## Decisiones de diseño
+
+**Mock vs. Stub vs. Fake (Parte 1).**CitaRepository: Se resolvió con un Mock. No basta con hacer un stub de findByFechaHoraCitaBetween... para que devuelva una lista; también importa VERIFICAR que save() se llama exactamente una vez y con la cita marcada como enviada. Cuando una prueba necesita controlar la respuesta y verificar la interacción, es un Mock.   ReminderChannelFactory / ReminderChannel: Se resolvieron con Mock. El comportamiento bajo prueba es la selección de estrategia (que pida el canal EMAIL si la cita lo prefiere así, y que envíe el mensaje). Esto solo se comprueba verificando la interacción explícita, no con un valor de retorno.   Clock: Se resolvió con un Fake (no Mock). Mockear Clock exigiría hacer stub de instant() y getZone() por separado. En su lugar, usamos Clock.fixed(...), que ya es una implementación completa y real provista por el JDK, siendo más simple, legible y fiel al comportamiento real en producción.
