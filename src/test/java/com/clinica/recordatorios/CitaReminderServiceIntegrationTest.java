@@ -5,13 +5,14 @@ import com.clinica.recordatorios.domain.CanalNotificacion;
 import com.clinica.recordatorios.domain.Cita;
 import com.clinica.recordatorios.repository.CitaRepository;
 import com.clinica.recordatorios.service.CitaReminderService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -27,9 +28,12 @@ class CitaReminderServiceIntegrationTest {
 
     @TestConfiguration
     static class ClockDeterministaConfig {
+        // Nombre distinto a "clock" (ClockConfig) para no chocar con la
+        // prohibición de sobrescritura de beans de Spring Boot; @Primary
+        // hace que este sea el Clock inyectado en el servicio.
         @Bean
         @Primary
-        public Clock clock() {
+        public Clock clockFijo() {
             return Clock.fixed(Instant.parse("2026-08-10T09:00:00Z"), ZoneId.of("UTC"));
         }
     }
@@ -40,18 +44,24 @@ class CitaReminderServiceIntegrationTest {
     @Autowired
     private CitaRepository citaRepository;
 
-    @MockBean
+    // Spring Boot 4 eliminó @MockBean; @MockitoBean es su reemplazo oficial.
+    @MockitoBean
     private NotificadorSmsGateway notificadorSmsGateway;
+
+    @BeforeEach
+    void setUp() {
+        citaRepository.deleteAll();
+    }
 
     @Test
     void enviarRecordatoriosPendientes_contextoCompletoDeSpring_persisteYNotificaCitasEnVentana() {
-        citaRepository.save(new Cita(null, "Carla Rios", "3011112222",
-                LocalDateTime.of(2026, 8, 10, 10, 0), CanalNotificacion.SMS, false));
+        citaRepository.save(new Cita(null, "Carla Ríos", "3011112222",
+                LocalDateTime.of(2026, 8, 10, 18, 0), CanalNotificacion.SMS, false));
 
         int enviados = citaReminderService.enviarRecordatoriosPendientes();
 
         assertEquals(1, enviados);
-        verify(notificadorSmsGateway, times(1)).enviarSms(anyString(), anyString());
+        verify(notificadorSmsGateway, times(1)).enviarSms(eq("3011112222"), anyString());
         assertTrue(citaRepository.findAll().get(0).isRecordatorioEnviado());
     }
 }

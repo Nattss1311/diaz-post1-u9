@@ -1,15 +1,10 @@
 package com.clinica.recordatorios.service;
 
-import java.time.Clock;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
+import com.clinica.recordatorios.channel.ReminderChannel;
+import com.clinica.recordatorios.channel.ReminderChannelFactory;
+import com.clinica.recordatorios.domain.CanalNotificacion;
+import com.clinica.recordatorios.domain.Cita;
+import com.clinica.recordatorios.repository.CitaRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,18 +12,20 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.clinica.recordatorios.channel.ReminderChannel;
-import com.clinica.recordatorios.channel.ReminderChannelFactory;
-import com.clinica.recordatorios.domain.CanalNotificacion;
-import com.clinica.recordatorios.domain.Cita;
-import com.clinica.recordatorios.repository.CitaRepository;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class CitaReminderServiceImplTest {
 
-    @Mock
-    private ReminderChannel canalUrgenteMock;
-    
     @Mock
     private CitaRepository citaRepository;
 
@@ -38,24 +35,28 @@ class CitaReminderServiceImplTest {
     @Mock
     private ReminderChannel reminderChannelMock;
 
-    // Fake deliberadamente NO se mockea con Mockito. Clock.fixed(...) es
-    // una implementación real y completa de java.time.Clock.
+    @Mock
+    private ReminderChannel canalUrgenteMock;
+
+    // Fake: Clock.fixed(...) es una implementación real y completa de
+    // java.time.Clock provista por el JDK; deliberadamente NO se mockea.
     private final Clock clockFijo =
             Clock.fixed(Instant.parse("2026-08-10T09:00:00Z"), ZoneId.of("UTC"));
 
     private CitaReminderServiceImpl citaReminderService;
 
     @BeforeEach
-    void setup() {
+    void setUp() {
         citaReminderService = new CitaReminderServiceImpl(
                 citaRepository, reminderChannelFactory, canalUrgenteMock, clockFijo);
     }
+
+    // ---------- Parte 1: enviarRecordatoriosPendientes ----------
 
     @Test
     void enviarRecordatoriosPendientes_citaEnVentana_usaElCanalPreferido() {
         Cita cita = new Cita(1L, "Ana Gómez", "ana@correo.com",
                 LocalDateTime.of(2026, 8, 10, 15, 0), CanalNotificacion.EMAIL, false);
-
         when(citaRepository.findByFechaHoraCitaBetweenAndRecordatorioEnviadoFalse(any(), any()))
                 .thenReturn(List.of(cita));
         when(reminderChannelFactory.obtenerCanal(CanalNotificacion.EMAIL))
@@ -64,9 +65,26 @@ class CitaReminderServiceImplTest {
         int enviados = citaReminderService.enviarRecordatoriosPendientes();
 
         assertEquals(1, enviados);
+        verify(reminderChannelFactory).obtenerCanal(CanalNotificacion.EMAIL);
         verify(reminderChannelMock, times(1)).enviar(eq(cita), anyString());
         verify(citaRepository, times(1)).save(cita);
         assertTrue(cita.isRecordatorioEnviado());
+    }
+
+    @Test
+    void enviarRecordatoriosPendientes_citaConCanalSms_solicitaCanalSmsALaFactory() {
+        Cita cita = new Cita(2L, "Pedro Díaz", "3005550000",
+                LocalDateTime.of(2026, 8, 10, 20, 0), CanalNotificacion.SMS, false);
+        when(citaRepository.findByFechaHoraCitaBetweenAndRecordatorioEnviadoFalse(any(), any()))
+                .thenReturn(List.of(cita));
+        when(reminderChannelFactory.obtenerCanal(CanalNotificacion.SMS))
+                .thenReturn(reminderChannelMock);
+
+        citaReminderService.enviarRecordatoriosPendientes();
+
+        verify(reminderChannelFactory).obtenerCanal(CanalNotificacion.SMS);
+        verify(reminderChannelFactory, never()).obtenerCanal(CanalNotificacion.EMAIL);
+        verify(reminderChannelMock).enviar(eq(cita), contains("Recordatorio"));
     }
 
     @Test
@@ -78,10 +96,10 @@ class CitaReminderServiceImplTest {
 
         ArgumentCaptor<LocalDateTime> desdeCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
         ArgumentCaptor<LocalDateTime> hastaCaptor = ArgumentCaptor.forClass(LocalDateTime.class);
-
         verify(citaRepository).findByFechaHoraCitaBetweenAndRecordatorioEnviadoFalse(
                 desdeCaptor.capture(), hastaCaptor.capture());
 
+        // Con Clock.systemDefaultZone() esta aserción sería no determinista.
         assertEquals(LocalDateTime.of(2026, 8, 10, 9, 0), desdeCaptor.getValue());
         assertEquals(LocalDateTime.of(2026, 8, 11, 9, 0), hastaCaptor.getValue());
     }
@@ -98,11 +116,13 @@ class CitaReminderServiceImplTest {
         verify(citaRepository, never()).save(any());
     }
 
+    // ---------- Parte 2: enviarRecordatorioUrgente (tras el refactor DIP) ----------
+
     @Test
     void enviarRecordatorioUrgente_citaExistente_usaCanalUrgenteInyectado() {
         Cita cita = new Cita(5L, "Luis Peña", "3001234567",
                 LocalDateTime.of(2026, 8, 10, 10, 30), CanalNotificacion.SMS, false);
-        when(citaRepository.findById(5L)).thenReturn(java.util.Optional.of(cita));
+        when(citaRepository.findById(5L)).thenReturn(Optional.of(cita));
 
         citaReminderService.enviarRecordatorioUrgente(5L);
 
@@ -113,10 +133,11 @@ class CitaReminderServiceImplTest {
 
     @Test
     void enviarRecordatorioUrgente_gatewayFalla_noMarcaComoEnviado() {
+        // Imposible de escribir antes del refactor del Paso 8: no existía
+        // punto de sustitución para simular el fallo del gateway de SMS.
         Cita cita = new Cita(6L, "Marta Ruiz", "3009876543",
                 LocalDateTime.of(2026, 8, 10, 10, 30), CanalNotificacion.SMS, false);
-        when(citaRepository.findById(6L)).thenReturn(java.util.Optional.of(cita));
-        
+        when(citaRepository.findById(6L)).thenReturn(Optional.of(cita));
         doThrow(new RuntimeException("Gateway de SMS no disponible"))
                 .when(canalUrgenteMock).enviar(any(), anyString());
 
@@ -124,11 +145,12 @@ class CitaReminderServiceImplTest {
                 () -> citaReminderService.enviarRecordatorioUrgente(6L));
 
         verify(citaRepository, never()).save(any());
+        assertFalse(cita.isRecordatorioEnviado());
     }
 
     @Test
     void enviarRecordatorioUrgente_citaInexistente_lanzaCitaNoEncontradaException() {
-        when(citaRepository.findById(99L)).thenReturn(java.util.Optional.empty());
+        when(citaRepository.findById(99L)).thenReturn(Optional.empty());
 
         assertThrows(CitaNoEncontradaException.class,
                 () -> citaReminderService.enviarRecordatorioUrgente(99L));
