@@ -1,6 +1,6 @@
 # Recordatorios Citas Service
 
-![CI](https://github.com/TU_USUARIO_GITHUB/diaz-post1-u9/actions/workflows/ci.yml/badge.svg)
+[![CI Pruebas y Cobertura](https://github.com/Nattss1311/diaz-post1-u9/actions/workflows/ci.yml/badge.svg)](https://github.com/Nattss1311/diaz-post1-u9/actions/workflows/ci.yml)
 
 > Post-contenido Unidad 9 — **Probar el Diseño: JUnit 5, Mockito, Test Doubles e Integración Continua**
 > Patrones de Diseño de Software · Sexto Semestre · Universidad de Santander (UDES)
@@ -195,16 +195,16 @@ mvn verify   # Todo lo anterior + genera el reporte de cobertura JaCoCo en targe
 ## 6. Evidencias
 
 ### 6.1 Pruebas en verde (`mvn verify`)
-![Pruebas en verde](docs/evidencias/01-pruebas-verde.png)
+![Pruebas en verde](evidencia/mvnVerify.png)
 
 ### 6.2 Pruebas en verde desde el IDE
-![Pruebas en el IDE](docs/evidencias/02-pruebas-ide.png)
+![Pruebas en el IDE](evidencia/mvntestResultado.png)
 
 ### 6.3 Reporte de cobertura JaCoCo
-![Cobertura JaCoCo](docs/evidencias/03-cobertura-jacoco.png)
+![Cobertura JaCoCo](evidencia/indexJacoco.png)
 
 ### 6.4 Pipeline de GitHub Actions en estado "Success"
-![GitHub Actions Success](docs/evidencias/04-github-actions-success.png)
+![GitHub Actions Success](evidencia/pipeline.png)
 
 ---
 
