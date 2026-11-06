@@ -106,7 +106,7 @@ verifyNoInteractions(reminderChannelFactory);                                  /
 **Diagnóstico (antes).** El método no era testeable por una sola línea:
 
 ```java
-// ❌ ANTES — Paso 7 (viola DIP)
+// ANTES — Paso 7 (viola DIP)
 @Override
 public void enviarRecordatorioUrgente(Long citaId) {
     Cita cita = citaRepository.findById(citaId)
@@ -123,7 +123,7 @@ El módulo de alto nivel (el servicio) dependía directamente de dos detalles co
 **Refactor (después).** El `new` no desaparece: se traslada al único lugar donde es correcto, el composition root, y el servicio pasa a depender de la abstracción:
 
 ```java
-// ✅ DESPUÉS — config/CanalUrgenteConfig.java
+// DESPUÉS — config/CanalUrgenteConfig.java
 @Configuration
 public class CanalUrgenteConfig {
     @Bean
@@ -132,7 +132,7 @@ public class CanalUrgenteConfig {
     }
 }
 
-// ✅ DESPUÉS — CitaReminderServiceImpl
+// DESPUÉS — CitaReminderServiceImpl
 public CitaReminderServiceImpl(CitaRepository citaRepository,
                                ReminderChannelFactory reminderChannelFactory,
                                @Qualifier("canalUrgente") ReminderChannel canalUrgente,
@@ -228,4 +228,4 @@ mvn verify   # Todo lo anterior + genera el reporte de cobertura JaCoCo en targe
 
 Este laboratorio evidenció que la testabilidad no es una propiedad que se añade al final, sino una consecuencia directa del diseño. Strategy redujo cualquier canal de envío a una interfaz propia que un único mock puede representar, y Factory Method transformó una decisión condicional oculta en una interacción explícita y verificable; gracias a ambos, el servicio pudo probarse en completo aislamiento con Mockito y un `Clock.fixed` del JDK como fake, obteniendo resultados deterministas.
 
-El caso de `enviarRecordatorioUrgente` lo confirmó por contraste: mientras el método construía su canal con `new`, el escenario de fallo del gateway era imposible de probar, y bastó aplicar DIP —mover la construcción al composition root e inyectar la abstracción por constructor— para habilitar esa prueba sin alterar el comportamiento externo. Finalmente, elegir H2 como fake de la base de datos y un mock solo para el proveedor externo de SMS permitió pruebas de integración fieles y rápidas, y un pipeline de integración continua sin infraestructura adicional.
+El caso de `enviarRecordatorioUrgente` lo confirmó por contraste: mientras el método construía su canal con `new`, el escenario de fallo del gateway era imposible de probar, y bastó aplicar DIP —mover la construcción al composition root e inyectar la abstracción por constructor— para habilitar esa prueba sin alterar el comportamiento externo. Finalmente, elegir H2 como fake de la base de datos y un mock solo para el proveedor externo de SMS permitió pruebas de integración fieles y rápidas, y un pipeline de integración continua sin infraestructura adicional. 
